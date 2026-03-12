@@ -1,0 +1,45 @@
+{
+  "posts": [
+    {
+      "id": "post-image-nostr",
+      "platform": "nostr",
+      "type": "short",
+      "content": "🚀 New merchant spotlight on Plebeian Market! Meet @farmer_bob selling organic produce directly with Bitcoin. No fees, no middlemen. Just fresh food and freedom. ⚡🌽",
+      "image": "/path/to/farm-photo.jpg",
+      "tags": ["plebeian", "merchants", "bitcoin"],
+      "scheduled_at": "2026-03-13T10:00:00Z",
+      "posted": false,
+      "posted_at": null
+    },
+    {
+      "id": "post-image-x",
+      "platform": "x",
+      "content": "New merchant spotlight! 🌾 Farmer Bob joins Plebeian Market with organic produce. Buy directly with Bitcoin! ⚡\n\n#Bitcoin #Nostr #LocalFood #Plebeian",
+      "image": "/path/to/farm-photo.png",
+      "scheduled_at": "2026-03-13T15:00:00Z",
+      "posted": false,
+      "posted_at": null
+    },
+    {
+      "id": "post-image-url",
+      "platform": "nostr",
+      "type": "long-form",
+      "title": "How to Buy Organic Food with Bitcoin",
+      "content": "Full article content here...\n\n## Buying Local with Bitcoin\n\nYou can now buy fresh organic produce directly from farmers using Bitcoin on Plebeian Market. No intermediaries, just peer-to-peer commerce.\n\n## Getting Started\n\n1. Browse your local farmers\n2. Place an order\n3. Pay with Bitcoin\n4. Enjoy fresh food!",
+      "image": "https://example.com/cover-image.jpg",
+      "tags": ["plebeian", "guide", "bitcoin", "local"],
+      "scheduled_at": "2026-03-14T09:00:00Z",
+      "posted": false,
+      "posted_at": null
+    },
+    {
+      "id": "post-both-image",
+      "platform": "both",
+      "content": "🌾 Did you know? Plebeian Market now has over 50 merchants accepting Bitcoin directly! From farm fresh produce to handmade goods - all peer-to-peer, no middlemen. 🏠⚡\n\n#Bitcoin #Nostr #P2P #Freedom",
+      "image": "/path/to/celebration.png",
+      "scheduled_at": "2026-03-14T14:00:00Z",
+      "posted": false,
+      "posted_at": null
+    }
+  ]
+}
