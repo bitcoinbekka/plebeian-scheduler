@@ -1,0 +1,95 @@
+╔════════════════════════════════════════════════════════════════╗
+║           PLEBEIAN SOCIAL MEDIA SCHEDULER                       ║
+╚════════════════════════════════════════════════════════════════╝
+
+🚀 SCHEDULE POSTS TO NOSTR & TWITTER AUTOMATICALLY
+
+═══════════════════════════════════════════════════════════════
+✨ KEY FEATURES
+═══════════════════════════════════════════════════════════════
+
+✓ Schedule posts days/weeks in advance
+✓ Post to Nostr relays (Damus, Nos.lol, etc.)
+✓ Cross-post to X/Twitter
+✓ Image support (upload automatically)
+✓ Automatic posting via cron
+✓ Dry-run mode for testing
+✓ Self-hosted & FOSS
+
+═══════════════════════════════════════════════════════════════
+📋 HOW IT WORKS
+═══════════════════════════════════════════════════════════════
+
+1. Plan content → 2. Add to queue → 3. Run scheduler → 4. Live!
+
+   ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+   │  Write   │───▶│   JSON   │───▶│  Cron    │───▶│  Nostr   │
+   │  Posts   │    │  Queue   │    │   Job    │    │  + X     │
+   └──────────┘    └──────────┘    └──────────┘    └──────────┘
+
+═══════════════════════════════════════════════════════════════
+💻 QUICK DEMO
+═══════════════════════════════════════════════════════════════
+
+# Add a post
+$ python add_post.py --platform nostr \
+    --content "New merchant joined! 🌾" \
+    --schedule "2026-03-15T09:00:00Z" \
+    --tags bitcoin nostr
+
+# Run scheduler
+$ python scheduler.py
+
+# Post appears on Nostr!
+🔗 https://nostr.com/e/[event-id]
+
+═══════════════════════════════════════════════════════════════
+🎬 LIVE DEMO RESULTS
+═══════════════════════════════════════════════════════════════
+
+Post 1: "Welcome to Plebeian Scheduler"     ✅ TEXT - LIVE
+Post 2: "3 minutes later - text only"      ✅ TEXT - LIVE
+Post 3: "With Bitcoin image"               ✅ IMAGE - LIVE
+
+🖼️ View: https://nostr.com/e/ad61544faf2295682... (with image)
+
+═══════════════════════════════════════════════════════════════
+🔐 SECURITY & PRIVACY
+═══════════════════════════════════════════════════════════════
+
+✓ Self-hosted — Run on your own infrastructure
+✓ FOSS — Free and open source forever
+✓ Private keys — Never exposed in code
+✓ No platform fees — Full control
+
+═══════════════════════════════════════════════════════════════
+🌐 GITHUB
+═══════════════════════════════════════════════════════════════
+
+https://github.com/bitcoinbekka/plebeian-scheduler
+
+• Full source code
+• Documentation
+• Installation guide
+• Example queues
+
+═══════════════════════════════════════════════════════════════
+💡 NEXT STEPS
+═══════════════════════════════════════════════════════════════
+
+1. Deploy to production (systemd service)
+2. Configure production Nostr key
+3. Add X/Twitter API credentials
+4. Schedule weekly content calendar
+5. Monitor engagement & reach
+
+═══════════════════════════════════════════════════════════════
+🙌 CONTACT
+═══════════════════════════════════════════════════════════════
+
+Nostr: npub19yjcp6m5ucpvx20e5knqspnwc44n94f4ynu0qkfxhlz6erm7klpq9senx6
+GitHub: https://github.com/bitcoinbekka/plebeian-scheduler
+
+═══════════════════════════════════════════════════════════════
+
+                      ⚡ Powered by Bitcoin & Nostr ⚡

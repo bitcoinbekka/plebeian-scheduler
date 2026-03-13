@@ -147,6 +147,19 @@ class NostrPoster:
                 logger.error(f"Failed to initialize Nostr: {e}")
                 self.private_key = None
 
+    def _connect_relays(self):
+        """Connect to all relays"""
+        if not self.relay_manager:
+            return False
+
+        try:
+            for relay in self.relay_manager.relays.values():
+                relay.connect()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to connect to relays: {e}")
+            return False
+
     def post_note(self, content: str, tags: List[str] = None, image: str = None) -> Optional[str]:
         """Post a short-form note (kind 1)
 
@@ -201,11 +214,12 @@ class NostrPoster:
 
             self.private_key.sign_event(event)
 
-            # Publish to relays
+            # Connect to relays and publish
             event_ids = []
-            for relay in self.relay_manager.relays.values():
-                relay.publish_event(event)
-                event_ids.append(event.id)
+            if self._connect_relays():
+                for relay in self.relay_manager.relays.values():
+                    relay.publish(event)
+                    event_ids.append(event.id)
 
             logger.info(f"Nostr note posted: {event.id}")
             return event.id
@@ -274,9 +288,10 @@ class NostrPoster:
 
             self.private_key.sign_event(event)
 
-            # Publish to relays
-            for relay in self.relay_manager.relays.values():
-                relay.publish_event(event)
+            # Connect to relays and publish
+            if self._connect_relays():
+                for relay in self.relay_manager.relays.values():
+                    relay.publish(event)
 
             logger.info(f"Nostr long-form posted: {event.id}")
             return event.id
