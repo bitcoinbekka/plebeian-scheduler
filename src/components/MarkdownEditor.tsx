@@ -40,6 +40,8 @@ interface MarkdownEditorProps {
   onChange: (value: string) => void;
   placeholder?: string;
   className?: string;
+  /** Called when user wants to upload an image inline. Should return the URL. */
+  onUploadImage?: (file: File) => Promise<string>;
 }
 
 interface ToolbarAction {
@@ -137,14 +139,16 @@ function renderMarkdownPreview(md: string): string {
   return html;
 }
 
-export function MarkdownEditor({ value, onChange, placeholder, className }: MarkdownEditorProps) {
+export function MarkdownEditor({ value, onChange, placeholder, className, onUploadImage }: MarkdownEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const [linkText, setLinkText] = useState('');
   const [mentionPopoverOpen, setMentionPopoverOpen] = useState(false);
   const [mentionNpub, setMentionNpub] = useState('');
+  const [imageUploading, setImageUploading] = useState(false);
 
   /** Insert text at the current cursor position */
   const insertAtCursor = useCallback((textToInsert: string) => {
@@ -273,6 +277,23 @@ export function MarkdownEditor({ value, onChange, placeholder, className }: Mark
     setLinkPopoverOpen(false);
   }, [linkUrl, linkText, insertAtCursor]);
 
+  /** Upload an image and insert markdown at cursor */
+  const handleImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !onUploadImage) return;
+
+    setImageUploading(true);
+    try {
+      const url = await onUploadImage(file);
+      insertAtCursor(`\n\n![](${url})\n\n`);
+    } catch (error) {
+      console.error('Image upload failed:', error);
+    } finally {
+      setImageUploading(false);
+      if (imageInputRef.current) imageInputRef.current.value = '';
+    }
+  }, [onUploadImage, insertAtCursor]);
+
   /** Insert a nostr mention */
   const handleInsertMention = useCallback(() => {
     const npub = mentionNpub.trim();
@@ -382,7 +403,7 @@ export function MarkdownEditor({ value, onChange, placeholder, className }: Mark
           </PopoverContent>
         </Popover>
 
-        {/* Image markdown */}
+        {/* Image upload + insert */}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -390,14 +411,33 @@ export function MarkdownEditor({ value, onChange, placeholder, className }: Mark
               variant="ghost"
               size="icon"
               className="w-8 h-8 text-muted-foreground hover:text-foreground hover:bg-secondary"
-              disabled={showPreview}
-              onClick={() => wrapSelection('![', '](url)')}
+              disabled={showPreview || imageUploading}
+              onClick={() => {
+                if (onUploadImage) {
+                  imageInputRef.current?.click();
+                } else {
+                  wrapSelection('![', '](url)');
+                }
+              }}
             >
-              <Image className="w-4 h-4" />
+              {imageUploading ? (
+                <span className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Image className="w-4 h-4" />
+              )}
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom" className="text-xs">Insert image</TooltipContent>
+          <TooltipContent side="bottom" className="text-xs">
+            {onUploadImage ? 'Upload & insert image' : 'Insert image'}
+          </TooltipContent>
         </Tooltip>
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleImageUpload}
+        />
 
         {/* Mention button */}
         <Popover open={mentionPopoverOpen} onOpenChange={setMentionPopoverOpen}>

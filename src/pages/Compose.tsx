@@ -32,6 +32,7 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -84,7 +85,10 @@ export default function Compose() {
 
   const editId = searchParams.get('edit');
   const headerImageInputRef = useRef<HTMLInputElement>(null);
+  const inlineImageInputRef = useRef<HTMLInputElement>(null);
+  const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [headerImageUploading, setHeaderImageUploading] = useState(false);
+  const [inlineImageUploading, setInlineImageUploading] = useState(false);
 
   const existingPost = useMemo(() => {
     if (editId) return posts.find(p => p.id === editId);
@@ -128,6 +132,67 @@ export default function Compose() {
   const setPostType = useCallback((postType: PostType) => {
     setPost(prev => ({ ...prev, postType }));
   }, []);
+
+  /** Upload an image and insert its URL at the cursor position in the short note textarea */
+  const handleInlineImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setInlineImageUploading(true);
+    try {
+      const tags = await uploadFile(file);
+      const urlTag = tags.find(([name]) => name === 'url');
+      if (!urlTag) throw new Error('No URL returned');
+
+      const url = urlTag[1];
+
+      // Build the UploadedImage for the media array
+      const img: UploadedImage = { url };
+      for (const tag of tags) {
+        const [name, value] = tag;
+        if (name === 'ox' || name === 'x') img.sha256 = value;
+        else if (name === 'm') img.mimeType = value;
+        else if (name === 'dim') img.dimensions = value;
+        else if (name === 'size') img.size = parseInt(value);
+        else if (name === 'blurhash') img.blurhash = value;
+      }
+
+      // Add to media array for imeta tags
+      setPost(prev => ({ ...prev, media: [...prev.media, img] }));
+
+      // Insert URL at cursor position in the content
+      const ta = noteTextareaRef.current;
+      if (ta) {
+        const start = ta.selectionStart;
+        const end = ta.selectionEnd;
+        const before = post.content.slice(0, start);
+        const after = post.content.slice(end);
+        // Add newlines around the URL for clean formatting
+        const prefix = before && !before.endsWith('\n') ? '\n' : '';
+        const suffix = after && !after.startsWith('\n') ? '\n' : '';
+        const newContent = before + prefix + url + suffix + after;
+        updateField('content', newContent);
+        // Put cursor after the inserted URL
+        requestAnimationFrame(() => {
+          ta.focus();
+          const newPos = start + prefix.length + url.length + suffix.length;
+          ta.setSelectionRange(newPos, newPos);
+        });
+      } else {
+        // Fallback: append to end
+        const separator = post.content && !post.content.endsWith('\n') ? '\n' : '';
+        updateField('content', post.content + separator + url + '\n');
+      }
+
+      toast({ title: 'Image uploaded', description: 'Image inserted into your note.' });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Upload failed';
+      toast({ title: 'Upload failed', description: msg, variant: 'destructive' });
+    } finally {
+      setInlineImageUploading(false);
+      if (inlineImageInputRef.current) inlineImageInputRef.current.value = '';
+    }
+  }, [post.content, uploadFile, updateField, toast]);
 
   // Save as draft
   const handleSaveDraft = useCallback(() => {
@@ -671,6 +736,26 @@ export default function Compose() {
             value={post.content}
             onChange={val => updateField('content', val)}
             placeholder="Start writing your article...\n\nUse the toolbar above for formatting, or write Markdown directly. Keyboard shortcuts: Ctrl+B for bold, Ctrl+I for italic, Ctrl+K for links."
+            onUploadImage={async (file) => {
+              const tags = await uploadFile(file);
+              const urlTag = tags.find(([name]) => name === 'url');
+              if (!urlTag) throw new Error('No URL returned');
+              const url = urlTag[1];
+
+              // Also add to media array for imeta tags
+              const img: UploadedImage = { url };
+              for (const tag of tags) {
+                const [name, value] = tag;
+                if (name === 'ox' || name === 'x') img.sha256 = value;
+                else if (name === 'm') img.mimeType = value;
+                else if (name === 'dim') img.dimensions = value;
+                else if (name === 'size') img.size = parseInt(value);
+                else if (name === 'blurhash') img.blurhash = value;
+              }
+              setPost(prev => ({ ...prev, media: [...prev.media, img] }));
+
+              return url;
+            }}
           />
         </div>
       ) : (
@@ -748,18 +833,51 @@ export default function Compose() {
                 )}
               </div>
             ) : (
-              /* Edit mode */
-              <Textarea
-                placeholder={
-                  post.postType === 'promo'
-                    ? "Write your promotional note... e.g. 'Check out my fresh Christmas Cakes! 50,000 sats 🎄'"
-                    : "What's on your mind? Share an update, announcement, or thought..."
-                }
-                value={post.content}
-                onChange={e => updateField('content', e.target.value)}
-                className="min-h-[160px] text-sm"
-                rows={8}
-              />
+              /* Edit mode — textarea with inline image upload */
+              <div className="relative">
+                <Textarea
+                  ref={noteTextareaRef}
+                  placeholder={
+                    post.postType === 'promo'
+                      ? "Write your promotional note... e.g. 'Check out my fresh Christmas Cakes! 50,000 sats 🎄'"
+                      : "What's on your mind? Share an update, announcement, or thought..."
+                  }
+                  value={post.content}
+                  onChange={e => updateField('content', e.target.value)}
+                  className="min-h-[160px] text-sm pb-12"
+                  rows={8}
+                />
+                {/* Inline toolbar at bottom of textarea */}
+                <div className="absolute bottom-2 left-2 right-2 flex items-center gap-1">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                        onClick={() => inlineImageInputRef.current?.click()}
+                        disabled={inlineImageUploading}
+                      >
+                        {inlineImageUploading ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <ImageIcon className="w-3.5 h-3.5" />
+                        )}
+                        {inlineImageUploading ? 'Uploading...' : 'Image'}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent className="text-xs">Upload and insert image at cursor</TooltipContent>
+                  </Tooltip>
+                  <input
+                    ref={inlineImageInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleInlineImageUpload}
+                  />
+                </div>
+              </div>
             )}
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">
