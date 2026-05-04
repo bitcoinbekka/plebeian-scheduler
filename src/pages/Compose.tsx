@@ -140,11 +140,21 @@ export default function Compose() {
 
     setInlineImageUploading(true);
     try {
-      const tags = await uploadFile(file);
-      const urlTag = tags.find(([name]) => name === 'url');
-      if (!urlTag) throw new Error('No URL returned');
+      if (!user) throw new Error('Must be logged in to upload');
 
-      const url = urlTag[1];
+      // Upload directly using BlossomUploader (same as useUploadFile but inline)
+      const { BlossomUploader } = await import('@nostrify/nostrify/uploaders');
+      const uploader = new BlossomUploader({
+        servers: ['https://blossom.primal.net/'],
+        signer: user.signer,
+      });
+      const tags = await uploader.upload(file);
+
+      if (!tags || !Array.isArray(tags)) throw new Error('Upload returned no data');
+
+      // Extract URL — first tag is always ['url', 'https://...']
+      const url = tags[0]?.[1];
+      if (!url) throw new Error('No URL in upload response');
 
       // Build the UploadedImage for the media array
       const img: UploadedImage = { url };
@@ -165,23 +175,23 @@ export default function Compose() {
       if (ta) {
         const start = ta.selectionStart;
         const end = ta.selectionEnd;
-        const before = post.content.slice(0, start);
-        const after = post.content.slice(end);
-        // Add newlines around the URL for clean formatting
-        const prefix = before && !before.endsWith('\n') ? '\n' : '';
-        const suffix = after && !after.startsWith('\n') ? '\n' : '';
-        const newContent = before + prefix + url + suffix + after;
-        updateField('content', newContent);
+        setPost(prev => {
+          const before = prev.content.slice(0, start);
+          const after = prev.content.slice(end);
+          const prefix = before && !before.endsWith('\n') ? '\n' : '';
+          const suffix = after && !after.startsWith('\n') ? '\n' : '';
+          return { ...prev, content: before + prefix + url + suffix + after };
+        });
         // Put cursor after the inserted URL
         requestAnimationFrame(() => {
           ta.focus();
-          const newPos = start + prefix.length + url.length + suffix.length;
-          ta.setSelectionRange(newPos, newPos);
         });
       } else {
         // Fallback: append to end
-        const separator = post.content && !post.content.endsWith('\n') ? '\n' : '';
-        updateField('content', post.content + separator + url + '\n');
+        setPost(prev => {
+          const separator = prev.content && !prev.content.endsWith('\n') ? '\n' : '';
+          return { ...prev, content: prev.content + separator + url + '\n' };
+        });
       }
 
       toast({ title: 'Image uploaded', description: 'Image inserted into your note.' });
@@ -192,7 +202,7 @@ export default function Compose() {
       setInlineImageUploading(false);
       if (inlineImageInputRef.current) inlineImageInputRef.current.value = '';
     }
-  }, [post.content, uploadFile, updateField, toast]);
+  }, [user, toast]);
 
   // Save as draft
   const handleSaveDraft = useCallback(() => {
@@ -737,10 +747,19 @@ export default function Compose() {
             onChange={val => updateField('content', val)}
             placeholder="Start writing your article...\n\nUse the toolbar above for formatting, or write Markdown directly. Keyboard shortcuts: Ctrl+B for bold, Ctrl+I for italic, Ctrl+K for links."
             onUploadImage={async (file) => {
-              const tags = await uploadFile(file);
-              const urlTag = tags.find(([name]) => name === 'url');
-              if (!urlTag) throw new Error('No URL returned');
-              const url = urlTag[1];
+              if (!user) throw new Error('Must be logged in');
+
+              const { BlossomUploader } = await import('@nostrify/nostrify/uploaders');
+              const uploader = new BlossomUploader({
+                servers: ['https://blossom.primal.net/'],
+                signer: user.signer,
+              });
+              const tags = await uploader.upload(file);
+
+              if (!tags || !Array.isArray(tags)) throw new Error('Upload returned no data');
+
+              const url = tags[0]?.[1];
+              if (!url) throw new Error('No URL in upload response');
 
               // Also add to media array for imeta tags
               const img: UploadedImage = { url };
