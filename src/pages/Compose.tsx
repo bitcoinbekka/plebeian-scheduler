@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useRef } from 'react';
 import { useSeoMeta } from '@unhead/react';
+import { nip19 } from 'nostr-tools';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Save,
@@ -23,6 +24,7 @@ import {
   BookOpen,
   Pencil,
   Repeat2,
+  AtSign,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -33,6 +35,8 @@ import { Calendar } from '@/components/ui/calendar';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Label } from '@/components/ui/label';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -136,6 +140,8 @@ export default function Compose() {
   const [showNotePreview, setShowNotePreview] = useState(false);
   const [customIntervalValue, setCustomIntervalValue] = useState('');
   const [customIntervalUnit, setCustomIntervalUnit] = useState<'days' | 'weeks' | 'months'>('days');
+  const [mentionPopoverOpen, setMentionPopoverOpen] = useState(false);
+  const [mentionInput, setMentionInput] = useState('');
 
   const updateField = useCallback(<K extends keyof SchedulerPost>(field: K, value: SchedulerPost[K]) => {
     setPost(prev => ({ ...prev, [field]: value }));
@@ -144,6 +150,47 @@ export default function Compose() {
   const setPostType = useCallback((postType: PostType) => {
     setPost(prev => ({ ...prev, postType }));
   }, []);
+
+  /** Insert a nostr: mention at the cursor position in the short note textarea */
+  const handleInsertMention = useCallback((npubOrHex: string) => {
+    const input = npubOrHex.trim();
+    if (!input) return;
+
+    // Normalize to npub format for the nostr: URI
+    let npub = input;
+    if (!input.startsWith('npub1')) {
+      try {
+        npub = nip19.npubEncode(input);
+      } catch {
+        // If it's not valid hex, try using as-is
+        npub = input;
+      }
+    }
+
+    const mention = `nostr:${npub}`;
+    const ta = noteTextareaRef.current;
+    if (ta) {
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      setPost(prev => {
+        const before = prev.content.slice(0, start);
+        const after = prev.content.slice(end);
+        const prefix = before && !before.endsWith(' ') && !before.endsWith('\n') ? ' ' : '';
+        const suffix = after && !after.startsWith(' ') && !after.startsWith('\n') ? ' ' : '';
+        return { ...prev, content: before + prefix + mention + suffix + after };
+      });
+      requestAnimationFrame(() => ta.focus());
+    } else {
+      setPost(prev => {
+        const separator = prev.content && !prev.content.endsWith(' ') && !prev.content.endsWith('\n') ? ' ' : '';
+        return { ...prev, content: prev.content + separator + mention + ' ' };
+      });
+    }
+
+    setMentionInput('');
+    setMentionPopoverOpen(false);
+    toast({ title: 'Mention added', description: 'The tagged user will be notified when published.' });
+  }, [toast]);
 
   /** Upload an image and insert its URL at the cursor position in the short note textarea */
   const handleInlineImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -881,6 +928,58 @@ export default function Compose() {
                     className="hidden"
                     onChange={handleInlineImageUpload}
                   />
+
+                  {/* @Mention button */}
+                  <Popover open={mentionPopoverOpen} onOpenChange={setMentionPopoverOpen}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <PopoverTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                          >
+                            <AtSign className="w-3.5 h-3.5" />
+                            Tag
+                          </Button>
+                        </PopoverTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent className="text-xs">Tag a Nostr user</TooltipContent>
+                    </Tooltip>
+                    <PopoverContent className="w-80 space-y-3" align="start" side="top">
+                      <div>
+                        <p className="text-sm font-medium">Tag a Nostr user</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          They'll be notified when your post is published
+                        </p>
+                      </div>
+                      <div>
+                        <Label className="text-xs">npub or hex pubkey</Label>
+                        <Input
+                          placeholder="npub1... or paste a hex pubkey"
+                          value={mentionInput}
+                          onChange={e => setMentionInput(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleInsertMention(mentionInput);
+                            }
+                          }}
+                          className="mt-1 font-mono text-xs"
+                          autoFocus
+                        />
+                      </div>
+                      <Button
+                        onClick={() => handleInsertMention(mentionInput)}
+                        size="sm"
+                        className="w-full"
+                        disabled={!mentionInput.trim()}
+                      >
+                        Insert @mention
+                      </Button>
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </div>
             )}

@@ -1,3 +1,4 @@
+import { nip19 } from 'nostr-tools';
 import type { SchedulerPost, UploadedImage } from './types';
 
 interface UnsignedEvent {
@@ -5,6 +6,32 @@ interface UnsignedEvent {
   content: string;
   tags: string[][];
   created_at: number;
+}
+
+/**
+ * Extract pubkeys from nostr: URI mentions in content (NIP-27).
+ * Supports nostr:npub1..., nostr:nprofile1..., nostr:note1..., nostr:nevent1...
+ * Returns an array of unique hex pubkeys found.
+ */
+function extractMentionedPubkeys(content: string): string[] {
+  const pubkeys = new Set<string>();
+  const regex = /nostr:(npub1[a-z0-9]+|nprofile1[a-z0-9]+)/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(content)) !== null) {
+    try {
+      const decoded = nip19.decode(match[1]);
+      if (decoded.type === 'npub') {
+        pubkeys.add(decoded.data);
+      } else if (decoded.type === 'nprofile') {
+        pubkeys.add(decoded.data.pubkey);
+      }
+    } catch {
+      // Invalid bech32, skip
+    }
+  }
+
+  return Array.from(pubkeys);
 }
 
 /** Build an imeta tag from an UploadedImage (NIP-92) */
@@ -57,6 +84,12 @@ function buildShortNoteEvent(post: SchedulerPost, now: number): UnsignedEvent {
       content += `\n${img.url}`;
     }
     tags.push(buildImetaTag(img));
+  }
+
+  // Extract nostr: mentions from content and add p tags (NIP-27)
+  const mentionedPubkeys = extractMentionedPubkeys(content);
+  for (const pubkey of mentionedPubkeys) {
+    tags.push(['p', pubkey]);
   }
 
   // NIP-40 expiration
@@ -112,6 +145,12 @@ function buildLongFormEvent(post: SchedulerPost, now: number): UnsignedEvent {
   // Media attachments as imeta tags
   for (const img of post.media) {
     tags.push(buildImetaTag(img));
+  }
+
+  // Extract nostr: mentions from content and add p tags (NIP-27)
+  const mentionedPubkeys = extractMentionedPubkeys(post.content);
+  for (const pubkey of mentionedPubkeys) {
+    tags.push(['p', pubkey]);
   }
 
   // NIP-40 expiration
