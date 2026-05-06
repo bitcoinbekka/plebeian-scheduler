@@ -194,7 +194,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         </header>
 
         {/* Page content */}
-        <div className="flex-1 p-4 md:p-6 lg:p-8">
+        <div className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8">
           {user ? (
             children
           ) : (

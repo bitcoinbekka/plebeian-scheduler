@@ -26,6 +26,8 @@ import {
   Globe,
   Trophy,
   Flame,
+  Target,
+  Rocket,
 } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer, XAxis, Tooltip as RechartsTooltip } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -45,6 +47,7 @@ import { useToast } from '@/hooks/useToast';
 import { format, formatDistanceToNow, subDays, startOfDay } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { type SchedulerPost } from '@/lib/types';
+import { usePostingStreak } from '@/hooks/usePostingStreak';
 
 
 /** Mini lead row for the dashboard */
@@ -222,6 +225,9 @@ export default function Dashboard() {
     });
   }, [relayPosts, schedulerLookup]);
 
+  // Posting streak data
+  const streak = usePostingStreak(relayPosts);
+
   // Engagement period selector state (7, 14, or 30 days)
   const [engagementDays, setEngagementDays] = useState<7 | 14 | 30>(14);
 
@@ -347,12 +353,12 @@ export default function Dashboard() {
 
 
   return (
-    <div className="space-y-8 animate-fade-in overflow-hidden">
+    <div className="space-y-5 sm:space-y-8 animate-fade-in overflow-hidden">
       {/* ===== HEADER ===== */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="font-display text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">
+          <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground text-sm mt-0.5 sm:mt-1">
             Your merchant marketing command center
           </p>
         </div>
@@ -441,8 +447,8 @@ export default function Dashboard() {
       {/* ===== ENGAGEMENT CHART (full width, taller with legend) ===== */}
       {sparklineData.length > 0 && (
         <Card>
-          <CardHeader className="pb-2 pt-4 px-4">
-            <div className="flex items-center justify-between">
+          <CardHeader className="pb-2 pt-4 px-3 sm:px-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div className="flex items-center gap-3">
                 <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                   <TrendingUp className="w-3.5 h-3.5 text-primary" />
@@ -529,7 +535,8 @@ export default function Dashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="pb-4 px-4">
-                <div className="space-y-0.5">
+                <div className="space-y-0.5 overflow-x-auto">
+                  <div className="min-w-[400px]">
                   {/* Hour labels row */}
                   <div className="flex items-center gap-0.5">
                     <span className="w-7 shrink-0" />
@@ -574,6 +581,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                   ))}
+                  </div>
                 </div>
                 {/* Legend */}
                 <div className="flex items-center justify-between mt-3 pt-2 border-t border-border/50">
@@ -729,6 +737,100 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
             </Link>
+          )}
+
+          {/* Posting Streak & Weekly Goal */}
+          {relayAnalyticsPosts.length > 0 && (
+            <Card className="bg-gradient-to-br from-orange-500/5 to-red-500/5 border-orange-500/15 overflow-hidden">
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-9 h-9 rounded-lg bg-orange-500/10 flex items-center justify-center">
+                      <Flame className={cn('w-4 h-4', streak.currentStreak > 0 ? 'text-orange-500' : 'text-muted-foreground')} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xl font-bold font-display">{streak.currentStreak}</span>
+                        <span className="text-xs text-muted-foreground">day streak</span>
+                      </div>
+                      {streak.streakAtRisk && (
+                        <p className="text-[10px] text-amber-500 font-medium">Post today to keep it going!</p>
+                      )}
+                      {streak.postedToday && streak.currentStreak > 0 && (
+                        <p className="text-[10px] text-emerald-500 font-medium">You posted today!</p>
+                      )}
+                    </div>
+                  </div>
+                  {streak.longestStreak > 0 && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="text-right">
+                          <p className="text-[10px] text-muted-foreground">Best</p>
+                          <p className="text-sm font-bold font-display">{streak.longestStreak}d</p>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent className="text-xs">Your longest posting streak</TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
+
+                {/* Weekly goal progress */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-muted-foreground font-medium flex items-center gap-1">
+                      <Target className="w-3 h-3" />
+                      Weekly goal: {streak.postsThisWeek}/{streak.weeklyGoal}
+                    </span>
+                    {streak.postsThisWeek >= streak.weeklyGoal && (
+                      <Badge variant="secondary" className="text-[9px] px-1.5 py-0 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
+                        Goal reached!
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={cn(
+                        'h-full rounded-full transition-all duration-500',
+                        streak.postsThisWeek >= streak.weeklyGoal
+                          ? 'bg-emerald-500'
+                          : 'bg-orange-500',
+                      )}
+                      style={{ width: `${Math.min(100, (streak.postsThisWeek / streak.weeklyGoal) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* 14-day activity grid */}
+                <div className="space-y-1">
+                  <p className="text-[9px] text-muted-foreground font-medium">Last 14 days</p>
+                  <div className="flex gap-1">
+                    {streak.activityGrid.map((day, i) => (
+                      <Tooltip key={i}>
+                        <TooltipTrigger asChild>
+                          <div
+                            className={cn(
+                              'flex-1 h-5 rounded-sm transition-colors',
+                              day.posted
+                                ? day.count >= 3 ? 'bg-orange-500' : day.count >= 2 ? 'bg-orange-400/70' : 'bg-orange-400/40'
+                                : 'bg-muted/50',
+                            )}
+                          />
+                        </TooltipTrigger>
+                        <TooltipContent className="text-[10px]">
+                          {day.date}: {day.count} post{day.count !== 1 ? 's' : ''}
+                        </TooltipContent>
+                      </Tooltip>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Stats row */}
+                <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t border-border/30">
+                  <span>{streak.last30Days} posts in 30 days</span>
+                  <span>~{streak.avgPerWeek}/week avg</span>
+                </div>
+              </CardContent>
+            </Card>
           )}
 
           {/* Best time to post insight */}

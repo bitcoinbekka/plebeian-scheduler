@@ -45,6 +45,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { ImageUploader } from '@/components/ImageUploader';
+import { ClientPreview } from '@/components/ClientPreview';
 import { ListingBrowser, type CampaignListing } from '@/components/ListingBrowser';
 import { AiGenerateDialog } from '@/components/AiGenerateDialog';
 import { MarkdownEditor } from '@/components/MarkdownEditor';
@@ -52,10 +53,14 @@ import { TimePicker } from '@/components/TimePicker';
 import { NoteContent } from '@/components/NoteContent';
 import { useScheduler } from '@/contexts/SchedulerContext';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { useAuthor } from '@/hooks/useAuthor';
 import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useUploadFile } from '@/hooks/useUploadFile';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useToast } from '@/hooks/useToast';
+import { useMyPublishedPosts } from '@/hooks/useMyPublishedPosts';
+import { useBatchEngagement } from '@/hooks/usePostEngagement';
+import { useSmartHashtags } from '@/hooks/useSmartHashtags';
 import { buildEvent } from '@/lib/eventBuilder';
 import { scheduleEvent } from '@/lib/schedulerApi';
 import { createNewPost, type SchedulerPost, type PostType, type PostTemplate, type ImportedListing, type UploadedImage } from '@/lib/types';
@@ -81,6 +86,13 @@ export default function Compose() {
   const { updatePost, removePost, posts } = useScheduler();
   const { mutateAsync: publishEvent, isPending: isPublishing } = useNostrPublish();
   const { mutateAsync: uploadFile } = useUploadFile();
+  const { data: authorData } = useAuthor(user?.pubkey);
+
+  // Smart hashtag suggestions based on engagement data
+  const { data: myRelayPosts } = useMyPublishedPosts();
+  const relayEventIds = useMemo(() => (myRelayPosts || []).map(e => e.id), [myRelayPosts]);
+  const { data: engagementMapForHashtags } = useBatchEngagement(relayEventIds);
+  const smartHashtags = useSmartHashtags(myRelayPosts, engagementMapForHashtags);
   const { config } = useAppContext();
 
   const editId = searchParams.get('edit');
@@ -479,17 +491,17 @@ export default function Compose() {
   const currentType = POST_TYPES.find(t => t.value === post.postType) ?? POST_TYPES[0];
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+    <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+      <div className="flex items-center gap-2 sm:gap-3">
+        <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="shrink-0">
           <ArrowLeft className="w-4 h-4" />
         </Button>
-        <div className="flex-1">
-          <h1 className="font-display text-2xl font-bold">
+        <div className="flex-1 min-w-0">
+          <h1 className="font-display text-xl sm:text-2xl font-bold truncate">
             {editId ? 'Edit Post' : 'Compose'}
           </h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs sm:text-sm text-muted-foreground">
             Create and schedule content for your Nostr audience
           </p>
         </div>
@@ -501,7 +513,7 @@ export default function Compose() {
       </div>
 
       {/* Post Type Selector */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
         {POST_TYPES.map(type => {
           const Icon = type.icon;
           const isActive = post.postType === type.value;
@@ -511,23 +523,23 @@ export default function Compose() {
               type="button"
               onClick={() => setPostType(type.value)}
               className={cn(
-                'relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all duration-200 text-center',
+                'relative flex flex-col items-center gap-1.5 sm:gap-2 p-2.5 sm:p-4 rounded-xl border-2 transition-all duration-200 text-center',
                 isActive
                   ? 'border-primary bg-primary/5 shadow-sm'
                   : 'border-border hover:border-primary/30 hover:bg-secondary/50'
               )}
             >
               <div className={cn(
-                'w-10 h-10 rounded-lg flex items-center justify-center transition-colors',
+                'w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center transition-colors',
                 isActive ? 'bg-primary/15' : 'bg-muted'
               )}>
-                <Icon className={cn('w-5 h-5', isActive ? 'text-primary' : 'text-muted-foreground')} />
+                <Icon className={cn('w-4 h-4 sm:w-5 sm:h-5', isActive ? 'text-primary' : 'text-muted-foreground')} />
               </div>
               <div>
-                <p className={cn('text-sm font-medium', isActive && 'text-primary')}>{type.label}</p>
+                <p className={cn('text-xs sm:text-sm font-medium', isActive && 'text-primary')}>{type.label}</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight hidden sm:block">{type.description}</p>
               </div>
-              <Badge variant="secondary" className="text-[9px] px-1.5 py-0">{type.kind}</Badge>
+              <Badge variant="secondary" className="text-[9px] px-1.5 py-0 hidden sm:inline-flex">{type.kind}</Badge>
             </button>
           );
         })}
@@ -819,38 +831,12 @@ export default function Compose() {
           </CardHeader>
           <CardContent className="space-y-3">
             {showNotePreview ? (
-              /* Preview mode */
-              <div className="min-h-[160px] rounded-lg border bg-secondary/20 p-4 space-y-3">
-                {post.content ? (
-                  <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                    <NoteContent event={{ kind: 1, content: post.content, tags: [], id: '', pubkey: '', sig: '', created_at: 0 }} className="text-sm" />
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground italic">Nothing to preview yet...</p>
-                )}
-                {/* Image gallery preview */}
-                {post.media.length > 0 && (
-                  <div className={cn(
-                    'grid gap-2',
-                    post.media.length === 1 && 'grid-cols-1 max-w-sm',
-                    post.media.length === 2 && 'grid-cols-2',
-                    post.media.length >= 3 && 'grid-cols-2 sm:grid-cols-3',
-                  )}>
-                    {post.media.map((img, idx) => (
-                      <div
-                        key={img.url}
-                        className="relative rounded-lg overflow-hidden border bg-muted"
-                      >
-                        <img
-                          src={img.url}
-                          alt={img.alt || `Image ${idx + 1}`}
-                          className="w-full h-auto max-h-64 object-contain"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              /* Preview mode — client mockup */
+              <ClientPreview
+                content={post.content}
+                images={post.media.map(m => m.url)}
+                metadata={authorData?.metadata}
+              />
             ) : (
               /* Edit mode — textarea with inline image upload */
               <div className="relative">
@@ -980,8 +966,48 @@ export default function Compose() {
                 Add
               </Button>
             </div>
-            {/* Quick suggestions */}
+            {/* Smart suggestions (based on engagement) + fallback suggestions */}
             <div>
+              {smartHashtags.length > 0 && (
+                <div className="mb-2">
+                  <p className="text-[10px] font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-amber-500" />
+                    Top performing hashtags
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {smartHashtags.slice(0, 8).map(ht => {
+                      const isInContent = post.content.toLowerCase().includes(`#${ht.tag.toLowerCase()}`);
+                      return (
+                        <Tooltip key={ht.tag}>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant={isInContent ? 'secondary' : 'outline'}
+                              size="sm"
+                              className={cn(
+                                'text-xs h-7 px-2.5 gap-1 transition-all border-amber-500/20',
+                                isInContent && 'opacity-50 cursor-default',
+                                !isInContent && 'hover:border-amber-500/40 hover:bg-amber-500/5',
+                              )}
+                              disabled={isInContent}
+                              onClick={() => {
+                                const hashtag = `#${ht.tag}`;
+                                const separator = post.content && !post.content.endsWith('\n') && !post.content.endsWith(' ') ? ' ' : '';
+                                updateField('content', post.content + separator + hashtag);
+                              }}
+                            >
+                              #{ht.tag}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent className="text-xs">
+                            Used in {ht.postCount} post{ht.postCount !== 1 ? 's' : ''} · avg {ht.avgEngagement} engagement
+                            {ht.totalSats > 0 && ` · ${ht.totalSats.toLocaleString()} sats`}
+                          </TooltipContent>
+                        </Tooltip>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <p className="text-[10px] font-medium text-muted-foreground mb-1.5">Quick suggestions</p>
             <div className="flex flex-wrap gap-1.5">
               {[
@@ -990,7 +1016,11 @@ export default function Compose() {
                   : ['Bitcoin', 'Nostr', 'Plebchain', 'V4V', 'BTC', 'Zap', 'BuildOnNostr', 'StackSats', 'PlebeianMarket', 'CircularEconomy']
                 ),
                 ...(post.importedListing?.categories ?? []).map(c => c.replace(/\s+/g, '')),
-              ].filter((tag, i, arr) => arr.indexOf(tag) === i).map(tag => {
+              ]
+              // Filter out smart hashtags already shown above
+              .filter((tag, i, arr) => arr.indexOf(tag) === i)
+              .filter(tag => !smartHashtags.some(sh => sh.tag.toLowerCase() === tag.toLowerCase()))
+              .map(tag => {
                 const isInContent = post.content.toLowerCase().includes(`#${tag.toLowerCase()}`);
                 return (
                   <Button
