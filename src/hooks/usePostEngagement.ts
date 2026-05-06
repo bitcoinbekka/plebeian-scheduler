@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useNostr } from '@nostrify/react';
 import { useQuery } from '@tanstack/react-query';
 import { nip57 } from 'nostr-tools';
@@ -110,89 +111,104 @@ export function usePostEngagement(eventId: string | null | undefined) {
   });
 }
 
+/** Process raw engagement events into a PostEngagement map */
+function processEngagementEvents(eventIds: string[], events: NostrEvent[]): Map<string, PostEngagement> {
+  // Group by referenced event ID
+  const byEventId = new Map<string, { reactions: NostrEvent[]; zaps: NostrEvent[] }>();
+  for (const id of eventIds) {
+    byEventId.set(id, { reactions: [], zaps: [] });
+  }
+
+  for (const event of events) {
+    const eTag = event.tags.find(([name]) => name === 'e')?.[1];
+    if (!eTag || !byEventId.has(eTag)) continue;
+
+    const bucket = byEventId.get(eTag)!;
+    if (event.kind === 7) bucket.reactions.push(event);
+    else if (event.kind === 9735) bucket.zaps.push(event);
+  }
+
+  const result = new Map<string, PostEngagement>();
+  for (const [id, { reactions: reactionEvents, zaps: zapEvents }] of byEventId) {
+    const reactions: Record<string, number> = {};
+    const reactorPubkeys = new Set<string>();
+    for (const event of reactionEvents) {
+      reactorPubkeys.add(event.pubkey);
+      const emoji = event.content === '' || event.content === '+' ? '❤️' : event.content;
+      reactions[emoji] = (reactions[emoji] || 0) + 1;
+    }
+
+    let totalSats = 0;
+    const zapperPubkeys = new Set<string>();
+    for (const zap of zapEvents) {
+      const descriptionTag = zap.tags.find(([name]) => name === 'description')?.[1];
+      if (descriptionTag) {
+        try {
+          const zapRequest = JSON.parse(descriptionTag);
+          if (zapRequest.pubkey) zapperPubkeys.add(zapRequest.pubkey);
+        } catch { /* ignore */ }
+      }
+      const amountTag = zap.tags.find(([name]) => name === 'amount')?.[1];
+      if (amountTag) {
+        totalSats += Math.floor(parseInt(amountTag) / 1000);
+        continue;
+      }
+      const bolt11Tag = zap.tags.find(([name]) => name === 'bolt11')?.[1];
+      if (bolt11Tag) {
+        try { totalSats += nip57.getSatoshisAmountFromBolt11(bolt11Tag); } catch { /* ignore */ }
+      }
+    }
+
+    result.set(id, {
+      reactionCount: reactionEvents.length,
+      zapCount: zapEvents.length,
+      totalSats,
+      uniqueReactors: reactorPubkeys.size,
+      uniqueZappers: zapperPubkeys.size,
+      reactions,
+      zapEvents,
+      reactionEvents,
+    });
+  }
+
+  return result;
+}
+
 /**
  * Fetch engagement for multiple published event IDs at once.
  * Returns a map from eventId → PostEngagement.
+ *
+ * Uses a stable query key based on a sorted hash of event IDs to ensure
+ * consistent caching across pages (Dashboard, Analytics, Leads).
  */
 export function useBatchEngagement(eventIds: string[]) {
   const { nostr } = useNostr();
 
+  // Stable key: hash the sorted IDs so the same set always hits the same cache
+  const stableKey = useMemo(() => {
+    if (eventIds.length === 0) return 'empty';
+    const sorted = [...eventIds].sort();
+    // Use first 5 + last 5 + count as a stable fingerprint
+    return `${sorted.length}:${sorted[0]?.slice(0, 8)}:${sorted[sorted.length - 1]?.slice(0, 8)}`;
+  }, [eventIds]);
+
   return useQuery({
-    queryKey: ['batch-engagement', ...eventIds.sort()],
+    queryKey: ['batch-engagement', stableKey],
     queryFn: async () => {
       if (eventIds.length === 0) return new Map<string, PostEngagement>();
 
-      // Single query for all event IDs — high limit to capture all engagement
+      // Fetch reactions (kind 7), zap receipts (kind 9735), and reposts (kind 6)
+      // Including kind 6 ensures consistency with the Lead Tracker
       const events = await nostr.query([{
-        kinds: [7, 9735],
+        kinds: [7, 9735, 6],
         '#e': eventIds,
         limit: 2000,
       }], { signal: AbortSignal.timeout(15000) });
 
-      // Group by referenced event ID
-      const byEventId = new Map<string, { reactions: NostrEvent[]; zaps: NostrEvent[] }>();
-      for (const id of eventIds) {
-        byEventId.set(id, { reactions: [], zaps: [] });
-      }
-
-      for (const event of events) {
-        // Find which event this relates to
-        const eTag = event.tags.find(([name]) => name === 'e')?.[1];
-        if (!eTag || !byEventId.has(eTag)) continue;
-
-        const bucket = byEventId.get(eTag)!;
-        if (event.kind === 7) bucket.reactions.push(event);
-        else if (event.kind === 9735) bucket.zaps.push(event);
-      }
-
-      // Process each
-      const result = new Map<string, PostEngagement>();
-      for (const [id, { reactions: reactionEvents, zaps: zapEvents }] of byEventId) {
-        const reactions: Record<string, number> = {};
-        const reactorPubkeys = new Set<string>();
-        for (const event of reactionEvents) {
-          reactorPubkeys.add(event.pubkey);
-          const emoji = event.content === '' || event.content === '+' ? '❤️' : event.content;
-          reactions[emoji] = (reactions[emoji] || 0) + 1;
-        }
-
-        let totalSats = 0;
-        const zapperPubkeys = new Set<string>();
-        for (const zap of zapEvents) {
-          const descriptionTag = zap.tags.find(([name]) => name === 'description')?.[1];
-          if (descriptionTag) {
-            try {
-              const zapRequest = JSON.parse(descriptionTag);
-              if (zapRequest.pubkey) zapperPubkeys.add(zapRequest.pubkey);
-            } catch { /* ignore */ }
-          }
-          const amountTag = zap.tags.find(([name]) => name === 'amount')?.[1];
-          if (amountTag) {
-            totalSats += Math.floor(parseInt(amountTag) / 1000);
-            continue;
-          }
-          const bolt11Tag = zap.tags.find(([name]) => name === 'bolt11')?.[1];
-          if (bolt11Tag) {
-            try { totalSats += nip57.getSatoshisAmountFromBolt11(bolt11Tag); } catch { /* ignore */ }
-          }
-        }
-
-        result.set(id, {
-          reactionCount: reactionEvents.length,
-          zapCount: zapEvents.length,
-          totalSats,
-          uniqueReactors: reactorPubkeys.size,
-          uniqueZappers: zapperPubkeys.size,
-          reactions,
-          zapEvents,
-          reactionEvents,
-        });
-      }
-
-      return result;
+      return processEngagementEvents(eventIds, events);
     },
     enabled: eventIds.length > 0,
-    staleTime: 60_000,
-    refetchInterval: 120_000,
+    staleTime: 2 * 60_000, // 2 minutes — match useMyPublishedPosts
+    refetchInterval: 5 * 60_000, // 5 minutes — match useMyPublishedPosts
   });
 }

@@ -305,19 +305,16 @@ function Analytics() {
     });
   }, [publishedPosts, timeRange]);
 
-  const eventIds = useMemo(
-    () => filteredPosts.map(p => p.eventId),
-    [filteredPosts],
-  );
-  const { data: engagementMap, isLoading: engagementLoading } = useBatchEngagement(eventIds);
-  const isLoading = postsLoading || engagementLoading;
-
-  // All event IDs for audience analysis (always use all posts)
+  // Single engagement query for ALL posts — same data used everywhere
   const allEventIds = useMemo(
     () => publishedPosts.map(p => p.eventId),
     [publishedPosts],
   );
-  const { data: allEngagementMap } = useBatchEngagement(allEventIds);
+  const { data: allEngagementMap, isLoading: engagementLoading } = useBatchEngagement(allEventIds);
+  const isLoading = postsLoading || engagementLoading;
+
+  // For filtered views, we just look up from the same map (no separate query)
+  const engagementMap = allEngagementMap;
 
   // --- Computed analytics data ---
 
